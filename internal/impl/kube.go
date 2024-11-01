@@ -34,13 +34,18 @@ import (
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/types/known/durationpb"
 	appsv1 "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/autoscaling/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	_ "k8s.io/api/autoscaling/v2beta2"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/yaml"
+
+	//autoscaler/vertical-pod-autoscaler/pkg/
+	vautoscaling "k8s.io/autoscaler/vertical-pod-autoscaler/pkg/apis/autoscaling.k8s.io/v1"
 )
 
 const (
@@ -90,6 +95,7 @@ func buildDeployment(d deployment, g group) (*appsv1.Deployment, error) {
 		"serviceweaver/name":    name,
 		"serviceweaver/app":     d.app.Name,
 		"serviceweaver/version": d.deploymentId[:8],
+		"serviceweaver/group":   g.Name,
 	}
 
 	// Pick DNS policy.
@@ -120,6 +126,7 @@ func buildDeployment(d deployment, g group) (*appsv1.Deployment, error) {
 			Labels: map[string]string{
 				"serviceweaver/app":     d.app.Name,
 				"serviceweaver/version": d.deploymentId[:8],
+				"serviceweaver/group":   g.Name,
 			},
 			Annotations: map[string]string{
 				"description": fmt.Sprintf("This Deployment hosts components %v.", strings.Join(g.Components, ", ")),
@@ -268,6 +275,68 @@ func buildAutoscaler(d deployment, g group) (*autoscalingv2.HorizontalPodAutosca
 		},
 		Spec: spec,
 	}, nil
+}
+
+func buildVerticalAutoscaler(d deployment, g group) (*vautoscaling.VerticalPodAutoscaler, error) {
+	name := deploymentName(d.app.Name, g.Name, d.deploymentId)
+	auto := vautoscaling.UpdateModeAuto
+	minRepls := int32(1) // I think this needs to be 1? maybe?
+
+	var spec vautoscaling.VerticalPodAutoscalerSpec
+
+	var minCores int64 = 1
+	var maxCores int64 = 1
+
+	spec.UpdatePolicy = &vautoscaling.PodUpdatePolicy{
+		UpdateMode:  &auto,
+		MinReplicas: &minRepls,
+	}
+
+	if g.VpaSpec != nil {
+
+		minCores = int64(g.VpaSpec.MinCores)
+		maxCores = int64(g.VpaSpec.MaxCores)
+
+	} else if d.config.VpaSpec != nil {
+		minCores = int64(d.config.VpaSpec.MinCores)
+		maxCores = int64(d.config.VpaSpec.MaxCores)
+	}
+
+	spec.TargetRef = &v1.CrossVersionObjectReference{
+		APIVersion: "apps/v1",
+		Kind:       "Deployment",
+		Name:       name,
+	}
+
+	// spec.UpdatePolicy.UpdateMode
+	spec.ResourcePolicy = &vautoscaling.PodResourcePolicy{
+		ContainerPolicies: []vautoscaling.ContainerResourcePolicy{{
+			ContainerName: "serviceweaver",
+			MinAllowed:    corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(minCores, resource.DecimalSI)},
+			MaxAllowed:    corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(maxCores, resource.DecimalSI)},
+		}},
+	}
+
+	return &vautoscaling.VerticalPodAutoscaler{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "autoscaling.k8s.io/v1",
+			Kind:       "VerticalPodAutoscaler",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: d.config.Namespace,
+			Labels: map[string]string{
+				"serviceweaver/app":     d.app.Name,
+				"serviceweaver/version": d.deploymentId[:8],
+			},
+
+			Annotations: map[string]string{
+				fmt.Sprintf("vpa-post-processor.kubernetes.io/%s_integerCPU", "serviceweaver"): "true",
+			},
+		},
+		Spec: spec,
+	}, nil
+
 }
 
 // buildContainer builds a container specification for a group.
@@ -664,6 +733,15 @@ func generateCoreYAMLs(w io.Writer, d deployment) error {
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Generated kube autoscaler for group %v\n", g.Name)
+
+		// Build autoscaler VerticalPodAutoscaler for the Deployment.
+		vAutoscaler, err := buildVerticalAutoscaler(d, g)
+		if err != nil {
+			return fmt.Errorf("unable to create kube vertical autoscaler for group %s: %w", g.Name, err)
+		}
+		if err := marshalResource(w, vAutoscaler, fmt.Sprintf("Vertical autoscaler for group %s", g.Name)); err != nil {
+			return err
+		}
 	}
 	return nil
 }

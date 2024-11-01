@@ -118,6 +118,9 @@ type kubeConfig struct {
 
 	// TelemetrySpec contains options to control how the telemetry is being manipulated.
 	Telemetry telemetry
+
+	// Optional
+	VpaSpec *VerticalScalingSpec
 }
 
 // listenerSpec stores configuration options for a listener.
@@ -158,6 +161,8 @@ type group struct {
 	ResourceSpec *corev1.ResourceRequirements
 	ScalingSpec  *autoscalingv2.HorizontalPodAutoscalerSpec
 	listeners    []listener // hosted listeners, populated by the kube deployer.
+
+	VpaSpec *VerticalScalingSpec // override any default Vertical Scaling Spec
 }
 
 // volumeSpecs encapsulates volumes and volume mounts specs as defined by the
@@ -180,4 +185,16 @@ type metricOpts struct {
 
 	// How often to export the metrics. By default, we export metrics every 30 seconds.
 	ExportInterval string
+}
+
+type VerticalScalingSpec struct {
+	// Cores that will initially be allocated to each pod by the VPA
+	MinCores int
+
+	// Point in which VPA will not scale up group anymore
+	MaxCores int
+}
+
+func (vss *VerticalScalingSpec) DoNotScale() bool {
+	return vss == nil || vss.MaxCores == vss.MinCores
 }
