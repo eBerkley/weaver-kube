@@ -121,6 +121,9 @@ type kubeConfig struct {
 
 	// Optional
 	VpaSpec *VerticalScalingSpec
+
+	// If VerticalPodAutoscalers should be deployed or not.
+	VpaEnabled bool
 }
 
 // listenerSpec stores configuration options for a listener.

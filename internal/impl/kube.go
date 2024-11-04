@@ -734,6 +734,11 @@ func generateCoreYAMLs(w io.Writer, d deployment) error {
 		}
 		fmt.Fprintf(os.Stderr, "Generated kube autoscaler for group %v\n", g.Name)
 
+		// Should Vpas not be used?
+		if !d.config.VpaEnabled {
+			continue
+		}
+
 		// Build autoscaler VerticalPodAutoscaler for the Deployment.
 		vAutoscaler, err := buildVerticalAutoscaler(d, g)
 		if err != nil {
