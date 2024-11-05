@@ -125,6 +125,8 @@ func Deploy(ctx context.Context, configFilename string) error {
 
 	// Unique app deployment identifier.
 	depId := uuid.New().String()
+	// Var used in docker.go
+	DOCKER_USE_VTUNE = config.VTuneEnabled
 
 	// Build the docker image for the deployment.
 	opts := dockerOptions{image: config.Image, repo: config.Repo, baseImage: config.BaseImage, buildTool: config.BuildTool}

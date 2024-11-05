@@ -34,6 +34,8 @@ const (
 	dockerBuildTimeout = time.Second * 120
 )
 
+var DOCKER_USE_VTUNE = false
+
 // dockerOptions configure how Docker images are built and pushed.
 type dockerOptions struct {
 	image     string // see kubeConfig.Image
@@ -103,6 +105,12 @@ func buildImage(ctx context.Context, app *protos.AppConfig, depId string, opts d
 	if err != nil {
 		return "", err
 	}
+
+	// Copy the vtune script into the workDir
+	if err := cp(filepath.Join(filepath.Dir(tool), "vtune_entry.sh"), filepath.Join(workDir, "vtune_entry.sh")); err != nil {
+		return "", err
+	}
+
 	install := "" // "weaver-kube" binary to install, if any
 	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
 		// The "weaver-kube" binary can run inside the container, so copy it.
@@ -137,6 +145,7 @@ downloaded and installed in the container. Do you want to proceed? [Y/n] `)
 		BaseImage  string // Name of the base image used to build the container
 		RunCmd     string // Command called in entrypoint.sh
 	}
+
 	var template = template.Must(template.New("Dockerfile").Parse(`
 {{if .Install }}
 FROM golang:bullseye as builder
@@ -171,6 +180,12 @@ ENTRYPOINT ["{{.Entrypoint}}"]
 		c.Entrypoint = filepath.Join("/weaver", filepath.Base(tool))
 	}
 	c.BaseImage = opts.baseImage
+
+	if DOCKER_USE_VTUNE {
+		c.RunCmd = c.Entrypoint
+		c.Entrypoint = "/weaver/vtune_entry.sh"
+
+	}
 	if err := template.Execute(dockerFile, c); err != nil {
 		return "", err
 	}
