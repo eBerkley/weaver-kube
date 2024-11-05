@@ -167,6 +167,36 @@ func buildDeployment(d deployment, g group) (*appsv1.Deployment, error) {
 		},
 	}
 
+	if d.config.VTuneEnabled {
+
+		dep.Spec.Template.Spec.HostPID = true
+		if dep.Spec.Template.Spec.Containers[0].SecurityContext == nil {
+			dep.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{}
+		}
+		dep.Spec.Template.Spec.Containers[0].SecurityContext.Privileged = ptrOf(true)
+
+		dep.Spec.Template.Spec.Volumes = append(dep.Spec.Template.Spec.Volumes,
+			corev1.Volume{
+				Name: "vtune-path",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/opt/intel/oneapi/vtune",
+						Type: ptrOf(corev1.HostPathDirectory),
+					},
+				},
+			},
+			corev1.Volume{
+				Name: "vtune-results-path",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/opt/vtune_results",
+						Type: ptrOf(corev1.HostPathDirectory),
+					},
+				},
+			},
+		)
+	}
+
 	// Add volume sources if any volume specified for the application or for the group.
 	dep.Spec.Template.Spec.Volumes = append(dep.Spec.Template.Spec.Volumes, d.config.StorageSpec.Volumes...)
 	dep.Spec.Template.Spec.Volumes = append(dep.Spec.Template.Spec.Volumes, g.StorageSpec.Volumes...)
@@ -280,7 +310,6 @@ func buildAutoscaler(d deployment, g group) (*autoscalingv2.HorizontalPodAutosca
 func buildVerticalAutoscaler(d deployment, g group) (*vautoscaling.VerticalPodAutoscaler, error) {
 	name := deploymentName(d.app.Name, g.Name, d.deploymentId)
 	auto := vautoscaling.UpdateModeAuto
-	minRepls := int32(1) // I think this needs to be 1? maybe?
 
 	var spec vautoscaling.VerticalPodAutoscalerSpec
 
@@ -289,7 +318,7 @@ func buildVerticalAutoscaler(d deployment, g group) (*vautoscaling.VerticalPodAu
 
 	spec.UpdatePolicy = &vautoscaling.PodUpdatePolicy{
 		UpdateMode:  &auto,
-		MinReplicas: &minRepls,
+		MinReplicas: ptrOf(int32(1)), // I think this always needs to be 1?
 	}
 
 	if g.VpaSpec != nil {
@@ -373,6 +402,22 @@ func buildContainer(d deployment, g group) (corev1.Container, error) {
 		// container, for debugging.
 		TTY:   true,
 		Stdin: true,
+	}
+
+	if d.config.VTuneEnabled {
+
+		// Add path to vtune executable
+		c.VolumeMounts = append(c.VolumeMounts,
+			corev1.VolumeMount{
+				Name:      "vtune-path",
+				MountPath: "/vtune",
+			},
+
+			// Add path to vtune results output
+			corev1.VolumeMount{
+				Name:      "vtune-results-path",
+				MountPath: "/tmp/vtune_results",
+			})
 	}
 
 	// Add volume mounts if any volume specified for the application or for the group.

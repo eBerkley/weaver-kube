@@ -124,6 +124,9 @@ type kubeConfig struct {
 
 	// If VerticalPodAutoscalers should be deployed or not.
 	VpaEnabled bool
+
+	// If we should set the shared volumes that allow using intel vTune
+	VTuneEnabled bool
 }
 
 // listenerSpec stores configuration options for a listener.

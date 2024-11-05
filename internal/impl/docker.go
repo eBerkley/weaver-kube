@@ -135,6 +135,7 @@ downloaded and installed in the container. Do you want to proceed? [Y/n] `)
 		Install    string // "weaver-kube" binary to install, if any
 		Entrypoint string // container entrypoint
 		BaseImage  string // Name of the base image used to build the container
+		RunCmd     string // Command called in entrypoint.sh
 	}
 	var template = template.Must(template.New("Dockerfile").Parse(`
 {{if .Install }}
@@ -145,6 +146,13 @@ RUN go install "{{.Install}}"
 FROM {{.BaseImage}}
 WORKDIR /weaver/
 COPY . .
+
+{{if .RunCmd }} 
+
+ENV RUN_CMD={{.RunCmd}}
+
+{{end}}
+
 {{if .Install }}
 COPY --from=builder /go/bin/ /weaver/
 {{end}}
@@ -156,6 +164,7 @@ ENTRYPOINT ["{{.Entrypoint}}"]
 	}
 	defer dockerFile.Close()
 	c := content{Install: install}
+
 	if install != "" {
 		c.Entrypoint = "/weaver/weaver-kube"
 	} else {
