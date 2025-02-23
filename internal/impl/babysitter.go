@@ -52,14 +52,15 @@ type BabysitterOptions struct {
 
 // babysitter starts and manages a weavelet inside the Pod.
 type babysitter struct {
-	ctx       context.Context
-	cfg       *BabysitterConfig
-	opts      BabysitterOptions
-	app       *protos.AppConfig
-	envelope  *envelope.Envelope
-	clientset *kubernetes.Clientset
-	logger    *slog.Logger
-	printer   *logging.PrettyPrinter
+	ctx             context.Context
+	cfg             *BabysitterConfig
+	opts            BabysitterOptions
+	app             *protos.AppConfig
+	envelope        *envelope.Envelope
+	clientset       *kubernetes.Clientset
+	logger          *slog.Logger
+	printer         *logging.PrettyPrinter
+	localComponents []string // Components running in this pod
 
 	mu       sync.Mutex
 	watching map[string]struct{} // components being watched
@@ -113,6 +114,8 @@ func NewBabysitter(ctx context.Context, app *protos.AppConfig, config *Babysitte
 	if opts.HandleLogEntry == nil {
 		b.printer = logging.NewPrettyPrinter(false /*colors disabled*/)
 	}
+	// Initialize the colocated components
+	b.localComponents = components
 
 	// Inform the weavelet of the components it should host.
 	if err := b.envelope.UpdateComponents(components); err != nil {
@@ -245,10 +248,20 @@ func (b *babysitter) watchPods(ctx context.Context, component string) error {
 			for _, addr := range addrs {
 				replicas = append(replicas, fmt.Sprintf("tcp://%s:%d", addr, internalPort))
 			}
-			routingInfo := &protos.RoutingInfo{
-				Component: component,
-				Replicas:  replicas,
+
+			routingInfo := &protos.RoutingInfo{}
+			if slices.Contains(b.localComponents, component) {
+				routingInfo = &protos.RoutingInfo{
+					Component: component,
+					Local:     true,
+				}
+			} else {
+				routingInfo = &protos.RoutingInfo{
+					Component: component,
+					Replicas:  replicas,
+				}
 			}
+
 			if err := b.envelope.UpdateRoutingInfo(routingInfo); err != nil {
 				// TODO(mwhittaker): Log this error.
 				fmt.Fprintf(os.Stderr, "UpdateRoutingInfo(%v): %v", routingInfo, err)
@@ -259,6 +272,12 @@ func (b *babysitter) watchPods(ctx context.Context, component string) error {
 
 // GetListenerAddress implements the envelope.EnvelopeHandler interface.
 func (b *babysitter) GetListenerAddress(_ context.Context, request *protos.GetListenerAddressRequest) (*protos.GetListenerAddressReply, error) {
+	if slices.Contains(b.localComponents, request.Name) {
+		return &protos.GetListenerAddressReply{
+			Address: fmt.Sprintf(":%d", internalPort),
+		}, nil
+	}
+
 	port, ok := b.cfg.Listeners[request.Name]
 	if !ok {
 		return nil, fmt.Errorf("listener %q not found", request.Name)
