@@ -254,6 +254,7 @@ func (b *babysitter) watchPods(ctx context.Context, component string) error {
 				routingInfo = &protos.RoutingInfo{
 					Component: component,
 					Local:     true,
+					Replicas:  replicas,
 				}
 			} else {
 				routingInfo = &protos.RoutingInfo{
