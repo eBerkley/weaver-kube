@@ -22,11 +22,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ServiceWeaver/weaver-kube/internal/impl"
-	"github.com/ServiceWeaver/weaver/runtime"
-	"github.com/ServiceWeaver/weaver/runtime/codegen"
-	"github.com/ServiceWeaver/weaver/runtime/protos"
-	"github.com/ServiceWeaver/weaver/runtime/tool"
+	"github.com/eberkley/weaver-kube/internal/impl"
+	"github.com/eberkley/weaver/runtime"
+	"github.com/eberkley/weaver/runtime/codegen"
+	"github.com/eberkley/weaver/runtime/protos"
+	"github.com/eberkley/weaver/runtime/tool"
 	"google.golang.org/protobuf/encoding/prototext"
 )
 

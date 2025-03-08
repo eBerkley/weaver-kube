@@ -6,8 +6,8 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/ServiceWeaver/weaver"
-	"github.com/ServiceWeaver/weaver/runtime/codegen"
+	"github.com/eberkley/weaver"
+	"github.com/eberkley/weaver/runtime/codegen"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"reflect"
@@ -15,14 +15,14 @@ import (
 
 func init() {
 	codegen.Register(codegen.Registration{
-		Name:  "github.com/ServiceWeaver/weaver-kube/examples/echo/Echoer",
+		Name:  "github.com/eberkley/weaver-kube/examples/echo/Echoer",
 		Iface: reflect.TypeOf((*Echoer)(nil)).Elem(),
 		Impl:  reflect.TypeOf(echoer{}),
 		LocalStubFn: func(impl any, caller string, tracer trace.Tracer) any {
-			return echoer_local_stub{impl: impl.(Echoer), tracer: tracer, echoMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/ServiceWeaver/weaver-kube/examples/echo/Echoer", Method: "Echo", Remote: false, Generated: true})}
+			return echoer_local_stub{impl: impl.(Echoer), tracer: tracer, echoMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/eberkley/weaver-kube/examples/echo/Echoer", Method: "Echo", Remote: false, Generated: true})}
 		},
 		ClientStubFn: func(stub codegen.Stub, caller string) any {
-			return echoer_client_stub{stub: stub, echoMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/ServiceWeaver/weaver-kube/examples/echo/Echoer", Method: "Echo", Remote: true, Generated: true})}
+			return echoer_client_stub{stub: stub, echoMetrics: codegen.MethodMetricsFor(codegen.MethodLabels{Caller: caller, Component: "github.com/eberkley/weaver-kube/examples/echo/Echoer", Method: "Echo", Remote: true, Generated: true})}
 		},
 		ServerStubFn: func(impl any, addLoad func(uint64, float64)) codegen.Server {
 			return echoer_server_stub{impl: impl.(Echoer), addLoad: addLoad}
@@ -33,7 +33,7 @@ func init() {
 		RefData: "",
 	})
 	codegen.Register(codegen.Registration{
-		Name:      "github.com/ServiceWeaver/weaver/Main",
+		Name:      "github.com/eberkley/weaver/Main",
 		Iface:     reflect.TypeOf((*weaver.Main)(nil)).Elem(),
 		Impl:      reflect.TypeOf(server{}),
 		Listeners: []string{"echo"},
@@ -47,7 +47,7 @@ func init() {
 		ReflectStubFn: func(caller func(string, context.Context, []any, []any) error) any {
 			return main_reflect_stub{caller: caller}
 		},
-		RefData: "⟦2bd5349f:wEaVeReDgE:github.com/ServiceWeaver/weaver/Main→github.com/ServiceWeaver/weaver-kube/examples/echo/Echoer⟧\n⟦914f1096:wEaVeRlIsTeNeRs:github.com/ServiceWeaver/weaver/Main→echo⟧\n",
+		RefData: "⟦2bd5349f:wEaVeReDgE:github.com/eberkley/weaver/Main→github.com/eberkley/weaver-kube/examples/echo/Echoer⟧\n⟦914f1096:wEaVeRlIsTeNeRs:github.com/eberkley/weaver/Main→echo⟧\n",
 	})
 }
 
@@ -178,19 +178,19 @@ var _ codegen.LatestVersion = codegen.Version[[0][24]struct{}](`
 
 ERROR: You generated this file with 'weaver generate' v0.24.6 (codegen
 version v0.24.0). The generated code is incompatible with the version of the
-github.com/ServiceWeaver/weaver module that you're using. The weaver module
+github.com/eberkley/weaver module that you're using. The weaver module
 version can be found in your go.mod file or by running the following command.
 
-    go list -m github.com/ServiceWeaver/weaver
+    go list -m github.com/eberkley/weaver
 
 We recommend updating the weaver module and the 'weaver generate' command by
 running the following.
 
-    go get github.com/ServiceWeaver/weaver@latest
-    go install github.com/ServiceWeaver/weaver/cmd/weaver@latest
+    go get github.com/eberkley/weaver@latest
+    go install github.com/eberkley/weaver/cmd/weaver@latest
 
 Then, re-run 'weaver generate' and re-build your code. If the problem persists,
-please file an issue at https://github.com/ServiceWeaver/weaver/issues.
+please file an issue at https://github.com/eberkley/weaver/issues.
 
 `)
 

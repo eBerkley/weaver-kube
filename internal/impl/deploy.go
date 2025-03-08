@@ -21,10 +21,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ServiceWeaver/weaver/runtime"
-	"github.com/ServiceWeaver/weaver/runtime/bin"
-	"github.com/ServiceWeaver/weaver/runtime/codegen"
-	"github.com/ServiceWeaver/weaver/runtime/version"
+	"github.com/eberkley/weaver/runtime"
+	"github.com/eberkley/weaver/runtime/bin"
+	"github.com/eberkley/weaver/runtime/codegen"
+	"github.com/eberkley/weaver/runtime/version"
 	"github.com/google/uuid"
 	"sigs.k8s.io/yaml"
 )
@@ -178,18 +178,18 @@ func checkVersionCompatibility(appBinary string) error {
 	if appBinaryVersions.DeployerVersion != version.DeployerVersion {
 		return fmt.Errorf(`
 ERROR: The binary you're trying to deploy (%q) was built with
-github.com/ServiceWeaver/weaver module version %s (internal version %s).
+github.com/eberkley/weaver module version %s (internal version %s).
 However, the 'weaver-kube' binary you're using (%s) was built with weaver
 module version %s (internal version %s). These versions are incompatible.
 
 We recommend updating both the weaver module your application is built with and
 updating the 'weaver-kube' command by running the following.
 
-	go get github.com/ServiceWeaver/weaver@latest
-	go install github.com/ServiceWeaver/weaver-kube/cmd/weaver-kube@latest
+	go get github.com/eberkley/weaver@latest
+	go install github.com/eberkley/weaver-kube/cmd/weaver-kube@latest
 
 Then, re-build your code and re-run 'weaver-kube deploy'. If the problem
-persists, please file an issue at https://github.com/ServiceWeaver/weaver/issues`,
+persists, please file an issue at https://github.com/eberkley/weaver/issues`,
 			relativize(appBinary), appBinaryVersions.ModuleVersion, appBinaryVersions.DeployerVersion, selfVersion, weaverKubeVersions.ModuleVersion, version.DeployerVersion)
 	}
 	return nil

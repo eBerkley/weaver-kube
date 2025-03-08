@@ -17,11 +17,11 @@ package tool
 import (
 	"context"
 
-	"github.com/ServiceWeaver/weaver-kube/internal/impl"
-	"github.com/ServiceWeaver/weaver-kube/internal/tool"
-	"github.com/ServiceWeaver/weaver/runtime/metrics"
-	"github.com/ServiceWeaver/weaver/runtime/protos"
-	swtool "github.com/ServiceWeaver/weaver/runtime/tool"
+	"github.com/eberkley/weaver-kube/internal/impl"
+	"github.com/eberkley/weaver-kube/internal/tool"
+	"github.com/eberkley/weaver/runtime/metrics"
+	"github.com/eberkley/weaver/runtime/protos"
+	swtool "github.com/eberkley/weaver/runtime/tool"
 	"go.opentelemetry.io/otel/sdk/trace"
 )
 

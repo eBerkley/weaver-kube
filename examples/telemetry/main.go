@@ -33,9 +33,9 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/ServiceWeaver/weaver-kube/tool"
-	"github.com/ServiceWeaver/weaver/runtime/metrics"
-	"github.com/ServiceWeaver/weaver/runtime/prometheus"
+	"github.com/eberkley/weaver-kube/tool"
+	"github.com/eberkley/weaver/runtime/metrics"
+	"github.com/eberkley/weaver/runtime/prometheus"
 	"go.opentelemetry.io/otel/exporters/jaeger" //lint:ignore SA1019 TODO: Update
 	"go.opentelemetry.io/otel/sdk/trace"
 )

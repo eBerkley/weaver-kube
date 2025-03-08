@@ -40,17 +40,17 @@ if test -z $gengo; then
 fi
 
 # Get the local module directory that stores protos for the
-# github.com/ServiceWeaver/weaver module.
-go mod download github.com/ServiceWeaver/weaver
-weaver_dep=$(go mod graph | grep "github.com/ServiceWeaver/weaver-kube github.com/ServiceWeaver/weaver@")
+# github.com/eberkley/weaver module.
+go mod download github.com/eberkley/weaver
+weaver_dep=$(go mod graph | grep "github.com/eberkley/weaver-kube github.com/eberkley/weaver@")
 if test -z "$weaver_dep"; then
-  printf "Go module github.com/ServiceWeaver/weaver not found.  Please run:\n\tgo mod tidy\n and then re-run this command."
+  printf "Go module github.com/eberkley/weaver not found.  Please run:\n\tgo mod tidy\n and then re-run this command."
   exit 1
 fi
 weaver_split=(${weaver_dep//@/ })
 weaver_version=${weaver_split[2]}
 if test -z $weaver_version; then
-  printf "Internal error: cannot determine version for github.com/ServiceWeaver/weaver module."
+  printf "Internal error: cannot determine version for github.com/eberkley/weaver module."
   exit 1
 fi
 weaver_dir=$gopath/pkg/mod/github.com/\!service\!weaver/weaver@$weaver_version

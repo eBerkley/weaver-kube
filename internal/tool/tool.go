@@ -15,8 +15,8 @@
 package tool
 
 import (
-	"github.com/ServiceWeaver/weaver-kube/internal/impl"
-	"github.com/ServiceWeaver/weaver/runtime/tool"
+	"github.com/eberkley/weaver-kube/internal/impl"
+	"github.com/eberkley/weaver/runtime/tool"
 )
 
 // Commands returns the set of `weaver kube` commands, which can be run via

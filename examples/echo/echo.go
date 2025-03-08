@@ -17,8 +17,8 @@ package main
 import (
 	"context"
 
-	"github.com/ServiceWeaver/weaver"
-	"github.com/ServiceWeaver/weaver/metrics"
+	"github.com/eberkley/weaver"
+	"github.com/eberkley/weaver/metrics"
 )
 
 // stringLength is a histogram that tracks the length of strings passed to the

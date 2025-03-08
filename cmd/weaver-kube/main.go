@@ -15,9 +15,9 @@
 package main
 
 import (
-	"github.com/ServiceWeaver/weaver-kube/internal/impl"
-	"github.com/ServiceWeaver/weaver-kube/internal/tool"
-	swtool "github.com/ServiceWeaver/weaver/runtime/tool"
+	"github.com/eberkley/weaver-kube/internal/impl"
+	"github.com/eberkley/weaver-kube/internal/tool"
+	swtool "github.com/eberkley/weaver/runtime/tool"
 )
 
 func main() {
