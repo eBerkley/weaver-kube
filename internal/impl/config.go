@@ -15,6 +15,7 @@
 package impl
 
 import (
+	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -157,6 +158,7 @@ type group struct {
 	StorageSpec  volumeSpecs // list of volumes and volume mounts
 	ResourceSpec *corev1.ResourceRequirements
 	ScalingSpec  *autoscalingv2.HorizontalPodAutoscalerSpec
+	StatefulSpec *appsv1.StatefulSetSpec
 	listeners    []listener // hosted listeners, populated by the kube deployer.
 }
 

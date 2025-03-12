@@ -68,6 +68,8 @@ type deployment struct {
 	config       *kubeConfig       // [kube] config from weaver.toml
 	app          *protos.AppConfig // parsed weaver.toml
 	groups       []group           // groups
+
+	statefulComponents []corev1.EnvVar // map of component names to number of replicas.
 }
 
 // listener contains information about a listener.
@@ -210,6 +212,120 @@ func buildListenerService(d deployment, g group, lis listener) (*corev1.Service,
 	}, nil
 }
 
+func buildStatefulSet(d deployment, g group) (*appsv1.StatefulSet, *corev1.Service, error) {
+	// Per deployment name that is app version specific
+
+	if g.StatefulSpec == nil {
+		return nil, nil, nil
+	}
+
+	name := deploymentName(d.app.Name, g.Name, d.deploymentId)
+
+	podLabels := map[string]string{
+		"serviceweaver/name":    name,
+		"serviceweaver/app":     d.app.Name,
+		"serviceweaver/version": d.deploymentId[:8],
+	}
+
+	// Create container.
+	container, err := buildContainer(d, g)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Add index env var to container
+	indexEnv := corev1.EnvVar{Name: "MY_INDEX", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.labels['apps.kubernetes.io/pod-index']"}}}
+
+	container.Env = append(container.Env, indexEnv)
+
+	// Pick DNS policy.
+	dnsPolicy := corev1.DNSClusterFirst
+	if d.config.UseHostNetwork {
+		dnsPolicy = corev1.DNSClusterFirstWithHostNet
+	}
+
+	stateSpec := g.StatefulSpec
+
+	service := corev1.Service{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Service",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      g.Name,
+			Namespace: d.config.Namespace,
+			Labels: map[string]string{
+				"serviceweaver/app":     d.app.Name,
+				"serviceweaver/svc":     g.Name,
+				"serviceweaver/version": d.deploymentId[:8],
+			},
+			Annotations: map[string]string{
+				"description": fmt.Sprintf("This is a headless service for the %v stateful set.", g.Name),
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: "None",
+			Selector:  podLabels,
+			Ports: []corev1.ServicePort{
+				{
+					Port:       servicePort,
+					Protocol:   "TCP",
+					TargetPort: intstr.IntOrString{IntVal: servicePort},
+				},
+			},
+		},
+	}
+	stateSpec.Selector = &metav1.LabelSelector{MatchLabels: podLabels}
+	stateSpec.ServiceName = g.Name
+	stateSpec.Template = corev1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    podLabels,
+			Namespace: d.config.Namespace,
+			Annotations: map[string]string{
+				"description": fmt.Sprintf("This Pod hosts components %v.", strings.Join(g.Components, ", ")),
+			},
+		},
+		Spec: corev1.PodSpec{
+			ServiceAccountName: d.config.ServiceAccount,
+			Containers:         []corev1.Container{container},
+			DNSPolicy:          dnsPolicy,
+			Affinity:           updateAffinitySpec(d.config.AffinitySpec, podLabels),
+
+			Volumes: []corev1.Volume{
+				{
+					Name: "config",
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: configMapName(d.deploymentId),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	return &appsv1.StatefulSet{
+		Spec: *stateSpec,
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "StatefulSet",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: d.config.Namespace,
+			Labels: map[string]string{
+				"serviceweaver/app":     d.app.Name,
+				"serviceweaver/svc":     g.Name,
+				"serviceweaver/version": d.deploymentId[:8],
+			},
+			Annotations: map[string]string{
+				"description": fmt.Sprintf("This StatefulSet manages the %q Deployment", name),
+			},
+		},
+	}, &service, nil
+}
+
 // buildAutoscaler generates a Kubernetes HorizontalPodAutoscaler for a group.
 func buildAutoscaler(d deployment, g group) (*autoscalingv2.HorizontalPodAutoscaler, error) {
 	// Per deployment name that is app version specific.
@@ -300,6 +416,9 @@ func buildContainer(d deployment, g group) (corev1.Container, error) {
 			},
 		},
 
+		// We will allow all groups to see the replica counts of
+		// All stateful groups regardless of if there is an outgoing edge or not.
+		Env: d.statefulComponents,
 		// Enabling TTY and Stdin allows the user to run a shell inside the
 		// container, for debugging.
 		TTY:   true,
@@ -645,25 +764,48 @@ func generateCoreYAMLs(w io.Writer, d deployment) error {
 			fmt.Fprintf(os.Stderr, "Generated kube listener service for listener %v\n", lis.name)
 		}
 
-		// Build a Deployment for the group.
-		deployment, err := buildDeployment(d, g)
-		if err != nil {
-			return fmt.Errorf("unable to create kube deployment for group %s: %w", g.Name, err)
-		}
-		if err := marshalResource(w, deployment, fmt.Sprintf("Deployment for group %s", g.Name)); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Generated kube deployment for group %v\n", g.Name)
+		// We do one of two things:
+		// If g is a stateful group, we construct a Headless Service and a StatefulSet.
+		// Else, we construct a Deployment and a HPA.
+		if g.StatefulSpec != nil {
+			// g is stateful
 
-		// Build autoscaler HorizontalPodAutoscaler for the Deployment.
-		autoscaler, err := buildAutoscaler(d, g)
-		if err != nil {
-			return fmt.Errorf("unable to create kube autoscaler for group %s: %w", g.Name, err)
+			statefulset, svc, err := buildStatefulSet(d, g)
+
+			if err != nil {
+				// Currently not possible.
+			}
+
+			if err := marshalResource(w, svc, fmt.Sprintf("Headless Service for group %s", g.Name)); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "Generated Headless Service for group %v\n", g.Name)
+
+			if err := marshalResource(w, statefulset, fmt.Sprintf("StatefulSet for group %s", g.Name)); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "Generated Stateful Set for group %v\n", g.Name)
+		} else {
+			// Build a Deployment for the group.
+			deployment, err := buildDeployment(d, g)
+			if err != nil {
+				return fmt.Errorf("unable to create kube deployment for group %s: %w", g.Name, err)
+			}
+			if err := marshalResource(w, deployment, fmt.Sprintf("Deployment for group %s", g.Name)); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "Generated kube deployment for group %v\n", g.Name)
+			// Build autoscaler HorizontalPodAutoscaler for the Deployment.
+			autoscaler, err := buildAutoscaler(d, g)
+			if err != nil {
+				return fmt.Errorf("unable to create kube autoscaler for group %s: %w", g.Name, err)
+			}
+			if err := marshalResource(w, autoscaler, fmt.Sprintf("Autoscaler for group %s", g.Name)); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "Generated kube autoscaler for group %v\n", g.Name)
 		}
-		if err := marshalResource(w, autoscaler, fmt.Sprintf("Autoscaler for group %s", g.Name)); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Generated kube autoscaler for group %v\n", g.Name)
+
 	}
 	return nil
 }
@@ -675,12 +817,17 @@ func newDeployment(app *protos.AppConfig, cfg *kubeConfig, depId, image string) 
 	if err != nil {
 		return deployment{}, err
 	}
-
+	statefuls := make(map[string]int)
 	// Map every component to its group, or nil if it's in a group by itself.
 	groups := map[string]group{}
 	for _, group := range cfg.Groups {
 		for _, component := range group.Components {
 			groups[component] = group
+
+			// Add components in this group to statefuls, if stateful.
+			if group.StatefulSpec != nil {
+				statefuls[component] = int(*group.StatefulSpec.Replicas)
+			}
 		}
 	}
 
@@ -704,6 +851,7 @@ func newDeployment(app *protos.AppConfig, cfg *kubeConfig, depId, image string) 
 				StorageSpec:  cgroup.StorageSpec,
 				ResourceSpec: cgroup.ResourceSpec,
 				ScalingSpec:  cgroup.ScalingSpec,
+				StatefulSpec: cgroup.StatefulSpec,
 			}
 		}
 		g.Components = append(g.Components, component)
@@ -721,11 +869,12 @@ func newDeployment(app *protos.AppConfig, cfg *kubeConfig, depId, image string) 
 	})
 
 	return deployment{
-		deploymentId: depId,
-		image:        image,
-		config:       cfg,
-		app:          app,
-		groups:       sorted,
+		deploymentId:       depId,
+		image:              image,
+		config:             cfg,
+		app:                app,
+		groups:             sorted,
+		statefulComponents: makeStatefulReplicasEnvVar(statefuls),
 	}, nil
 }
 

@@ -2,6 +2,8 @@ module github.com/eberkley/weaver-kube
 
 go 1.21
 
+replace github.com/eberkley/weaver => ../weaver
+
 require (
 	github.com/eberkley/weaver v0.25.1
 	github.com/google/uuid v1.3.1

@@ -52,7 +52,6 @@ func Deploy(ctx context.Context, configFilename string) error {
 	if err := yaml.Unmarshal(contents, config); err != nil {
 		return fmt.Errorf("parse deployment config file %q: %w", configFilename, err)
 	}
-
 	if config.AppConfig == "" {
 		return fmt.Errorf("app config file not specified")
 	}

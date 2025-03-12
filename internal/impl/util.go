@@ -19,11 +19,25 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"strings"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 // greenText returns the ANSI escape code for a green colored text.
 func greenText() string {
 	return "\033[32m%s\033[0m\n"
+}
+
+func makeStatefulReplicasEnvVar(compReplicas map[string]int) []corev1.EnvVar {
+	envvars := make([]corev1.EnvVar, 0)
+	for c, r := range compReplicas {
+		paths := strings.Split(c, "/")
+		name := paths[len(paths)-1]
+		envvars = append(envvars, corev1.EnvVar{Name: fmt.Sprintf("weaver_%v_replicas", name), Value: strconv.Itoa(r)})
+	}
+	return envvars
 }
 
 // cp copies the src file to the dst files.
