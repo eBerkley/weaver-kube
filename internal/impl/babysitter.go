@@ -24,7 +24,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/eberkley/weaver/internal/routing"
+	"github.com/eberkley/weaver-kube/internal/impl/routing"
 	"github.com/eberkley/weaver/runtime"
 	"github.com/eberkley/weaver/runtime/envelope"
 	"github.com/eberkley/weaver/runtime/logging"
