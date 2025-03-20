@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/eberkley/weaver/internal/routing"
 	"github.com/eberkley/weaver/runtime"
 	"github.com/eberkley/weaver/runtime/envelope"
 	"github.com/eberkley/weaver/runtime/logging"
@@ -262,6 +263,7 @@ func (b *babysitter) watchPods(ctx context.Context, component string) error {
 					Replicas:  replicas,
 				}
 			}
+			routingInfo.Assignment = routing.EqualSlices(replicas)
 
 			if err := b.envelope.UpdateRoutingInfo(routingInfo); err != nil {
 				// TODO(mwhittaker): Log this error.
