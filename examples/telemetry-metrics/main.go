@@ -85,7 +85,7 @@ func main() {
 		}
 	}()
 
-	tool.Run("telemetry", tool.Plugins{
-		HandleMetrics:    p.handleMetrics,
+	tool.Run("telemetry-metrics", tool.Plugins{
+		HandleMetrics: p.handleMetrics,
 	})
 }
