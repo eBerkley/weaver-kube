@@ -232,7 +232,7 @@ func buildStatefulSet(d deployment, g group) (*appsv1.StatefulSet, *corev1.Servi
 			Kind:       "StatefulSet",
 			APIVersion: "apps/v1",
 		},
-		MinReplicas: g.StatefulSpec.Replicas,
+		MinReplicas: ptrOf(*g.StatefulSpec.Replicas),
 		MaxReplicas: maxRepls,
 		Metrics:     g.ScalingSpec.Metrics,
 		Behavior:    g.ScalingSpec.Behavior,
@@ -263,6 +263,9 @@ func buildStatefulSet(d deployment, g group) (*appsv1.StatefulSet, *corev1.Servi
 	}
 
 	stateSpec := g.StatefulSpec
+	if g.ScalingSpec != nil {
+		stateSpec.Replicas = nil
+	}
 
 	service := corev1.Service{
 		TypeMeta: metav1.TypeMeta{
@@ -324,6 +327,7 @@ func buildStatefulSet(d deployment, g group) (*appsv1.StatefulSet, *corev1.Servi
 			},
 		},
 	}
+
 	return &appsv1.StatefulSet{
 			Spec: *stateSpec,
 			TypeMeta: metav1.TypeMeta{
