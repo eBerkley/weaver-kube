@@ -212,26 +212,45 @@ func buildListenerService(d deployment, g group, lis listener) (*corev1.Service,
 	}, nil
 }
 
-func buildStatefulSet(d deployment, g group) (*appsv1.StatefulSet, *corev1.Service, error) {
+func buildStatefulSet(d deployment, g group) (*appsv1.StatefulSet, *corev1.Service, *autoscalingv2.HorizontalPodAutoscaler, error) {
 	// Per deployment name that is app version specific
 
 	if g.StatefulSpec == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	name := deploymentName(d.app.Name, g.Name, d.deploymentId)
+
+	maxRepls := g.ScalingSpec.MaxReplicas
+	if maxRepls == 0 {
+		maxRepls = *g.StatefulSpec.Replicas
+	}
+
+	spec := autoscalingv2.HorizontalPodAutoscalerSpec{
+		ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+			Name:       name,
+			Kind:       "StatefulSet",
+			APIVersion: "apps/v1",
+		},
+		MinReplicas: g.StatefulSpec.Replicas,
+		MaxReplicas: maxRepls,
+		Metrics:     g.ScalingSpec.Metrics,
+		Behavior:    g.ScalingSpec.Behavior,
+	}
 
 	podLabels := map[string]string{
 		"serviceweaver/name":    name,
 		"serviceweaver/app":     d.app.Name,
 		"serviceweaver/version": d.deploymentId[:8],
+		"serviceweaver/gname":   g.Name,
 	}
 
 	// Create container.
 	container, err := buildContainer(d, g)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+
 	// Add index env var to container
 	indexEnv := corev1.EnvVar{Name: "MY_INDEX", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.labels['apps.kubernetes.io/pod-index']"}}}
 
@@ -306,24 +325,41 @@ func buildStatefulSet(d deployment, g group) (*appsv1.StatefulSet, *corev1.Servi
 		},
 	}
 	return &appsv1.StatefulSet{
-		Spec: *stateSpec,
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "apps/v1",
-			Kind:       "StatefulSet",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: d.config.Namespace,
-			Labels: map[string]string{
-				"serviceweaver/app":     d.app.Name,
-				"serviceweaver/svc":     g.Name,
-				"serviceweaver/version": d.deploymentId[:8],
+			Spec: *stateSpec,
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "apps/v1",
+				Kind:       "StatefulSet",
 			},
-			Annotations: map[string]string{
-				"description": fmt.Sprintf("This StatefulSet manages the %q Deployment", name),
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: d.config.Namespace,
+				Labels: map[string]string{
+					"serviceweaver/app":     d.app.Name,
+					"serviceweaver/svc":     g.Name,
+					"serviceweaver/version": d.deploymentId[:8],
+				},
+				Annotations: map[string]string{
+					"description": fmt.Sprintf("This StatefulSet manages the %q Deployment", name),
+				},
 			},
-		},
-	}, &service, nil
+		}, &service, &autoscalingv2.HorizontalPodAutoscaler{
+			TypeMeta: metav1.TypeMeta{
+				APIVersion: "autoscaling/v2",
+				Kind:       "HorizontalPodAutoscaler",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      name,
+				Namespace: d.config.Namespace,
+				Labels: map[string]string{
+					"serviceweaver/app":     d.app.Name,
+					"serviceweaver/version": d.deploymentId[:8],
+				},
+				Annotations: map[string]string{
+					"description": fmt.Sprintf("This HorizontalPodAutoscaler scales the %q Deployment.", name),
+				},
+			},
+			Spec: spec,
+		}, nil
 }
 
 // buildAutoscaler generates a Kubernetes HorizontalPodAutoscaler for a group.
@@ -765,12 +801,12 @@ func generateCoreYAMLs(w io.Writer, d deployment) error {
 		}
 
 		// We do one of two things:
-		// If g is a stateful group, we construct a Headless Service and a StatefulSet.
+		// If g is a stateful group, we construct a Headless Service, a StatefulSet, and a HPA.
 		// Else, we construct a Deployment and a HPA.
 		if g.StatefulSpec != nil {
 			// g is stateful
 
-			statefulset, svc, err := buildStatefulSet(d, g)
+			statefulset, svc, hpa, err := buildStatefulSet(d, g)
 
 			if err != nil {
 				// Currently not possible.
@@ -785,6 +821,12 @@ func generateCoreYAMLs(w io.Writer, d deployment) error {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "Generated Stateful Set for group %v\n", g.Name)
+
+			if err := marshalResource(w, hpa, fmt.Sprintf("HPA for group %s", g.Name)); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "Generated HPA for group %v\n", g.Name)
+
 		} else {
 			// Build a Deployment for the group.
 			deployment, err := buildDeployment(d, g)
