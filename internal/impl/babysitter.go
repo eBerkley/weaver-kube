@@ -178,11 +178,32 @@ func (b *babysitter) watchPods(ctx context.Context, component string) error {
 	b.mu.Unlock()
 
 	// Watch the pods running the requested component.
-	rs, ok := b.cfg.Groups[component]
-	if !ok {
+	groupEntry, ok := b.cfg.Groups[component]
+	// rs, ok := b.cfg.Groups[component]
+	if !ok || groupEntry == nil {
 		return fmt.Errorf("unable to determine group name for component %s", component)
 	}
-	name := deploymentName(b.app.Name, rs, b.cfg.DeploymentId)
+
+	rs := groupEntry.GroupNames
+
+	addrs := map[string]string{}
+	var mu sync.Mutex
+
+	for _, rgroup := range rs {
+		group := rgroup
+		go func() {
+			err := b.watchPodsForGroup(ctx, component, group, &mu, addrs)
+			if err != nil {
+				slog.Error("Failed to watch pods for group","group", group,"error", err)
+			}
+		}()
+	}
+	return nil
+
+}
+
+func (b *babysitter) watchPodsForGroup(ctx context.Context, component string, group string, mu *sync.Mutex, addrs map[string]string) error {
+	name := deploymentName(b.app.Name, group, b.cfg.DeploymentId)
 	opts := metav1.ListOptions{LabelSelector: fmt.Sprintf("serviceweaver/name=%s", name)}
 
 	// Create a watcher to watch pod changes for the component.
@@ -214,7 +235,7 @@ func (b *babysitter) watchPods(ctx context.Context, component string) error {
 	// Repeatedly receive events from Kubernetes, updating the set of pod
 	// addresses appropriately. Abort when the channel is closed or the context
 	// is canceled.
-	addrs := map[string]string{}
+	// addrs := map[string]string{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -226,6 +247,7 @@ func (b *babysitter) watchPods(ctx context.Context, component string) error {
 				return nil
 			}
 
+			mu.Lock()
 			changed := false
 			switch event.Type {
 			case watch.Added, watch.Modified:
@@ -241,6 +263,8 @@ func (b *babysitter) watchPods(ctx context.Context, component string) error {
 					changed = true
 				}
 			}
+
+			mu.Unlock()
 			if !changed {
 				continue
 			}

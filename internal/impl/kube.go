@@ -727,13 +727,16 @@ func generateConfigMap(w io.Writer, configFilename string, d deployment) error {
 
 	// Form config.textpb and mapping from component names to their group names.
 	listeners := map[string]int32{}
-	groups := map[string]string{}
+	groups := map[string]*ComponentGroups{}
 	for _, g := range d.groups {
 		for _, lis := range g.listeners {
 			listeners[lis.name] = lis.port
 		}
 		for _, c := range g.Components {
-			groups[c] = g.Name
+			if groups[c] == nil {
+				groups[c] = &ComponentGroups{}
+			}
+			groups[c].GroupNames = append(groups[c].GroupNames, g.Name)
 		}
 	}
 
@@ -864,15 +867,15 @@ func newDeployment(app *protos.AppConfig, cfg *kubeConfig, depId, image string) 
 		return deployment{}, err
 	}
 	statefuls := make(map[string]int)
-	// Map every component to its group, or nil if it's in a group by itself.
-	groups := map[string]group{}
-	for _, group := range cfg.Groups {
-		for _, component := range group.Components {
-			groups[component] = group
+	// Map component to all groups it belongs to.
+	componentToGroups := map[string][]group{}
+	for _, grp := range cfg.Groups {
+		for _, component := range grp.Components {
+			componentToGroups[component] = append(componentToGroups[component], grp)
 
-			// Add components in this group to statefuls, if stateful.
-			if group.StatefulSpec != nil {
-				statefuls[component] = int(*group.StatefulSpec.Replicas)
+			// If the group has a StatefulSpec, mark the component as stateful.
+			if grp.StatefulSpec != nil {
+				statefuls[component] = int(*grp.StatefulSpec.Replicas)
 			}
 		}
 	}
@@ -880,32 +883,29 @@ func newDeployment(app *protos.AppConfig, cfg *kubeConfig, depId, image string) 
 	// Form groups.
 	groupsByName := map[string]group{}
 	for component, listeners := range components {
-		// We use the first component in a group as the name of the group.
-		var gname string
-		cgroup, ok := groups[component]
-		if ok {
-			gname = cgroup.Name
-		} else {
-			gname = component
+		groupList := componentToGroups[component]
+		if len(groupList) == 0 {
+			groupList = []group{{Name: component}}
 		}
 
-		// Append the component and listeners to the group.
-		g, ok := groupsByName[gname]
-		if !ok {
-			g = group{
-				Name:         gname,
-				StorageSpec:  cgroup.StorageSpec,
-				ResourceSpec: cgroup.ResourceSpec,
-				ScalingSpec:  cgroup.ScalingSpec,
-				StatefulSpec: cgroup.StatefulSpec,
+		for _, cgroup := range groupList {
+			gname := cgroup.Name
+			g, ok := groupsByName[gname]
+			if !ok {
+				g = group{
+					Name:         gname,
+					StorageSpec:  cgroup.StorageSpec,
+					ResourceSpec: cgroup.ResourceSpec,
+					ScalingSpec:  cgroup.ScalingSpec,
+					StatefulSpec: cgroup.StatefulSpec,
+				}
 			}
+			g.Components = append(g.Components, component)
+			for _, name := range listeners {
+				g.listeners = append(g.listeners, newListener(depId, cfg, name))
+			}
+			groupsByName[gname] = g
 		}
-		g.Components = append(g.Components, component)
-		for _, name := range listeners {
-			g.listeners = append(g.listeners, newListener(depId, cfg, name))
-		}
-
-		groupsByName[gname] = g
 	}
 
 	// Sort groups by name to ensure stable YAML.

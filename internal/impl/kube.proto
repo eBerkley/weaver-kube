@@ -25,8 +25,12 @@ message BabysitterConfig {
   string namespace = 1;              // Kubernetes namespace
   string deployment_id = 2;          // globally unique deployment id
   map<string, int32> listeners = 3;  // a map from listener name to port
-  map<string, string> groups = 4;    // a map from component name to group name
+  map<string, ComponentGroups> groups = 4;    // a map from component name to group name
   Telemetry telemetry = 5;           // options to control how the telemetry is being manipulated.
+}
+
+message ComponentGroups {
+  repeated string group_names = 1;
 }
 
 // Options to control how the telemetry is being manipulated.
