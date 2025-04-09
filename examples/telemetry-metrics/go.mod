@@ -3,6 +3,7 @@ module telemetry-metrics
 go 1.23.4
 
 replace github.com/eberkley/weaver-kube => ../..
+replace github.com/eberkley/weaver => ../../../weaver
 
 require (
 	github.com/eberkley/weaver v0.25.1

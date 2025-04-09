@@ -21,6 +21,7 @@ import (
 	"log/slog"
 	"os"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
@@ -194,7 +195,7 @@ func (b *babysitter) watchPods(ctx context.Context, component string) error {
 		go func() {
 			err := b.watchPodsForGroup(ctx, component, group, &mu, addrs)
 			if err != nil {
-				slog.Error("Failed to watch pods for group","group", group,"error", err)
+				slog.Error("Failed to watch pods for group", "group", group, "error", err)
 			}
 		}()
 	}
@@ -248,19 +249,40 @@ func (b *babysitter) watchPodsForGroup(ctx context.Context, component string, gr
 			}
 
 			mu.Lock()
+			stateful := false
 			changed := false
+			var idxStr string
 			switch event.Type {
 			case watch.Added, watch.Modified:
 				pod := event.Object.(*v1.Pod)
-				if pod.Status.PodIP != "" && addrs[pod.Name] != pod.Status.PodIP {
-					addrs[pod.Name] = pod.Status.PodIP
-					changed = true
+				idxStr, stateful = pod.Labels["apps.kubernetes.io/pod-index"]
+
+				if stateful { // Index by ordinality
+					if pod.Status.PodIP != "" && addrs[idxStr] != pod.Status.PodIP {
+						addrs[idxStr] = pod.Status.PodIP
+						changed = true
+					}
+				} else { // Index by pod name
+					if pod.Status.PodIP != "" && addrs[pod.Name] != pod.Status.PodIP {
+						addrs[pod.Name] = pod.Status.PodIP
+						changed = true
+					}
 				}
+
 			case watch.Deleted:
 				pod := event.Object.(*v1.Pod)
-				if _, ok := addrs[pod.Name]; ok {
-					delete(addrs, pod.Name)
-					changed = true
+				idxStr, stateful = pod.Labels["apps.kubernetes.io/pod-index"]
+
+				if stateful { // Index by ordinality
+					if _, ok := addrs[idxStr]; ok {
+						delete(addrs, idxStr)
+						changed = true
+					}
+				} else { // Index by pod name
+					if _, ok := addrs[pod.Name]; ok {
+						delete(addrs, pod.Name)
+						changed = true
+					}
 				}
 			}
 
@@ -268,31 +290,42 @@ func (b *babysitter) watchPodsForGroup(ctx context.Context, component string, gr
 			if !changed {
 				continue
 			}
+			var replicas []string
 
-			replicas := []string{}
-			for _, addr := range addrs {
-				replicas = append(replicas, fmt.Sprintf("tcp://%s:%d", addr, internalPort))
-			}
-
-			routingInfo := &protos.RoutingInfo{}
-			if slices.Contains(b.localComponents, component) {
-				routingInfo = &protos.RoutingInfo{
-					Component: component,
-					Local:     true,
-					Replicas:  replicas,
+			if stateful {
+				fmt.Fprintf(os.Stderr, "babysitter.watchPodsForGroup: component %v is stateful\n", component)
+				replicas = make([]string, len(addrs))
+				for idx, addr := range addrs {
+					i, err := strconv.Atoi(idx)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "watchPodsForGroup: failure parsing stateful replica addr list: %v, error key: %v\n", addrs, err)
+						continue
+					}
+					replicas[i] = fmt.Sprintf("tcp://%s:%d", addr, internalPort)
 				}
+
 			} else {
-				routingInfo = &protos.RoutingInfo{
-					Component: component,
-					Replicas:  replicas,
+				fmt.Fprintf(os.Stderr, "babysitter.watchPodsForGroup: component %v is not stateful\n", component)
+				replicas = []string{}
+				for _, addr := range addrs {
+					replicas = append(replicas, fmt.Sprintf("tcp://%s:%d", addr, internalPort))
 				}
 			}
-			routingInfo.Assignment = routing.EqualSlices(replicas)
+
+			routingInfo := &protos.RoutingInfo{
+				Component:  component,
+				Replicas:   replicas,
+				Local:      slices.Contains(b.localComponents, component),
+				Stateful:   stateful,
+				Assignment: routing.EqualSlices(replicas),
+			}
+			fmt.Fprintf(os.Stderr, "babysitter.UpdateRoutingInfo: preparing to call envelope.UpdateRoutingInfo(%v)\n", routingInfo)
 
 			if err := b.envelope.UpdateRoutingInfo(routingInfo); err != nil {
 				// TODO(mwhittaker): Log this error.
 				fmt.Fprintf(os.Stderr, "UpdateRoutingInfo(%v): %v", routingInfo, err)
 			}
+			fmt.Fprintf(os.Stderr, "babysitter.watchPodsForGroup: envelope.UpdateRoutingInfo successful.\n")
 		}
 	}
 }
