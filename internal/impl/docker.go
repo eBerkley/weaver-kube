@@ -104,30 +104,35 @@ func buildImage(ctx context.Context, app *protos.AppConfig, depId string, opts d
 		return "", err
 	}
 	install := "" // "weaver-kube" binary to install, if any
-	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
-		// The "weaver-kube" binary can run inside the container, so copy it.
-		if err := cp(tool, filepath.Join(workDir, filepath.Base(tool))); err != nil {
-			return "", err
-		}
-	} else if toolIsDev {
-		// The "weaver-kube" binary has local modifications, but it cannot be
-		// copied into the container. In this case, we install the latest
-		// version of "weaver-kube" in the container, if approved by the user.
-		scanner := bufio.NewScanner(os.Stdin)
-		fmt.Print(
-			`The running weaver-kube binary hasn't been cross-compiled for linux/amd64 and
+	// Lets just try
+	if err := cp(tool, filepath.Join(workDir, filepath.Base(tool))); err != nil {
+		fmt.Printf("error trying to copy weaver-kube binary into container: %v\n", err)
+
+		if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+			// The "weaver-kube" binary can run inside the container, so copy it.
+			if err := cp(tool, filepath.Join(workDir, filepath.Base(tool))); err != nil {
+				return "", err
+			}
+		} else if toolIsDev {
+			// The "weaver-kube" binary has local modifications, but it cannot be
+			// copied into the container. In this case, we install the latest
+			// version of "weaver-kube" in the container, if approved by the user.
+			scanner := bufio.NewScanner(os.Stdin)
+			fmt.Print(
+				`The running weaver-kube binary hasn't been cross-compiled for linux/amd64 and
 cannot run inside the container. Instead, the latest weaver-kube binary will be
 downloaded and installed in the container. Do you want to proceed? [Y/n] `)
-		scanner.Scan()
-		text := scanner.Text()
-		if text != "" && text != "y" && text != "Y" {
-			return "", fmt.Errorf("user bailed out")
+			scanner.Scan()
+			text := scanner.Text()
+			if text != "" && text != "y" && text != "Y" {
+				return "", fmt.Errorf("user bailed out")
+			}
+			install = "github.com/eberkley/weaver-kube/cmd/weaver-kube@latest"
+		} else {
+			// Install the currently running version of "weaver-kube" in the
+			// container.
+			install = "github.com/eberkley/weaver-kube/cmd/weaver-kube@" + toolVersion
 		}
-		install = "github.com/eberkley/weaver-kube/cmd/weaver-kube@latest"
-	} else {
-		// Install the currently running version of "weaver-kube" in the
-		// container.
-		install = "github.com/eberkley/weaver-kube/cmd/weaver-kube@" + toolVersion
 	}
 
 	// Create a Dockerfile in workDir/.
