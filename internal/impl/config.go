@@ -39,6 +39,11 @@ type kubeConfig struct {
 	// version id of the application deployment.
 	Image string
 
+	// ExistingImage is like Image, but setting this field causes weaver-kube to skip the build step.
+	//
+	// If empty, proceeds as normal.
+	ExistingImage string
+
 	// Build tool is the name of the container build tool to use.
 	//
 	// If empty, Service Weaver will pick default build tool as `docker`.

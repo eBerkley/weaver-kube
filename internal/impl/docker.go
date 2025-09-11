@@ -36,16 +36,21 @@ const (
 
 // dockerOptions configure how Docker images are built and pushed.
 type dockerOptions struct {
-	image     string // see kubeConfig.Image
-	repo      string // see kubeConfig.Repo
-	baseImage string // see kubeConfig.BaseImage
-	buildTool string // build tool to be used for building container image ( i.e `podman` or `docker` )
+	image         string // see kubeConfig.Image
+	repo          string // see kubeConfig.Repo
+	baseImage     string // see kubeConfig.BaseImage
+	buildTool     string // build tool to be used for building container image ( i.e `podman` or `docker` )
+	existingImage string // see kubeConfig.ExistingImage
 }
 
 // buildAndUploadDockerImage builds a Docker image and uploads it to a remote
 // repo, if one is specified. It returns the image name that should be used in
 // Kubernetes YAML files.
 func buildAndUploadDockerImage(ctx context.Context, app *protos.AppConfig, depId string, opts dockerOptions) (string, error) {
+	if opts.existingImage != "" {
+		fmt.Fprintf(os.Stderr, greenText(), fmt.Sprintf("ExistingImage set (%s), skipping build step...", opts.existingImage))
+		return opts.existingImage, nil
+	}
 	// Build the Docker image.
 	image, err := buildImage(ctx, app, depId, opts)
 	if err != nil {

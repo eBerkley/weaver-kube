@@ -92,6 +92,7 @@ func buildDeployment(d deployment, g group) (*appsv1.Deployment, error) {
 		"serviceweaver/name":    name,
 		"serviceweaver/app":     d.app.Name,
 		"serviceweaver/version": d.deploymentId[:8],
+		"serviceweaver/group":   g.Name,
 	}
 
 	// Pick DNS policy.
@@ -122,6 +123,7 @@ func buildDeployment(d deployment, g group) (*appsv1.Deployment, error) {
 			Labels: map[string]string{
 				"serviceweaver/app":     d.app.Name,
 				"serviceweaver/version": d.deploymentId[:8],
+				"serviceweaver/group":   g.Name,
 			},
 			Annotations: map[string]string{
 				"description": fmt.Sprintf("This Deployment hosts components %v.", strings.Join(g.Components, ", ")),
