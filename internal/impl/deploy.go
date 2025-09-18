@@ -118,7 +118,8 @@ func Deploy(ctx context.Context, configFilename string) error {
 	}
 	for _, lis := range config.Listeners {
 		if _, ok := allListeners[lis.Name]; !ok {
-			return fmt.Errorf("listener %s specified in the config not found in the binary", lis.Name)
+
+			return fmt.Errorf("listener %s specified in the config not found in the binary. found listeners: %+v", lis.Name, binListeners)
 		}
 	}
 
